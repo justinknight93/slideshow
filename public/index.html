@@ -3,119 +3,124 @@
 <script src="/js/pdf.mjs" type="module"></script>
 
 <script type="module">
-    // If absolute URL from the remote server is provided, configure the CORS
-    // header on that server.
-    const url = '/slides.pdf';
+  // If absolute URL from the remote server is provided, configure the CORS
+  // header on that server.
+  const url = "/slides.pdf";
 
-    // Loaded via <script> tag, create shortcut to access PDF.js exports.
-    const { pdfjsLib } = globalThis;
+  // Loaded via <script> tag, create shortcut to access PDF.js exports.
+  const { pdfjsLib } = globalThis;
 
-    // The workerSrc property shall be specified.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.mjs';
+  // The workerSrc property shall be specified.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/pdf.worker.mjs";
 
-    let pdfDoc = null,
-        pageNum = 1,
-        pageRendering = false,
-        pageNumPending = null,
-        scale = 1,
-        canvas = document.getElementById('the-canvas'),
-        ctx = canvas.getContext('2d'),
-        notesJson = [];
+  let pdfDoc = null,
+    pageNum = 1,
+    pageRendering = false,
+    pageNumPending = null,
+    scale = 1,
+    canvas = document.getElementById("the-canvas"),
+    ctx = canvas.getContext("2d"),
+    notesJson = [];
 
-    /**
-     * Get page info from document, resize canvas accordingly, and render page.
-     * @param num Page number.
-     */
-    function renderPage(num) {
-        pageRendering = true;
-        // Using promise to fetch the page
-        pdfDoc.getPage(num).then(function (page) {
-            const viewport = page.getViewport({ scale: scale });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+  /**
+   * Get page info from document, resize canvas accordingly, and render page.
+   * @param num Page number.
+   */
+  function renderPage(num) {
+    pageRendering = true;
+    // Using promise to fetch the page
+    pdfDoc.getPage(num).then(function (page) {
+      const viewport = page.getViewport({ scale: scale });
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
 
-            // Render PDF page into canvas context
-            const renderContext = {
-                canvasContext: ctx,
-                viewport: viewport
-            };
-            const renderTask = page.render(renderContext);
+      // Render PDF page into canvas context
+      const renderContext = {
+        canvasContext: ctx,
+        viewport: viewport,
+      };
+      const renderTask = page.render(renderContext);
 
-            // Wait for rendering to finish
-            renderTask.promise.then(function () {
-                pageRendering = false;
-                if (pageNumPending !== null) {
-                    // New page rendering is pending
-                    renderPage(pageNumPending);
-                    pageNumPending = null;
-                }
-            });
+      // Wait for rendering to finish
+      renderTask.promise.then(function () {
+        pageRendering = false;
+        if (pageNumPending !== null) {
+          // New page rendering is pending
+          renderPage(pageNumPending);
+          pageNumPending = null;
+        }
+      });
+    });
+
+    document.getElementById("notes").innerHTML =
+      notesJson[num - 1]?.notes || "";
+
+    // Update page counters
+    document.getElementById("page_num").textContent = num;
+  }
+
+  /**
+   * If another page rendering in progress, waits until the rendering is
+   * finised. Otherwise, executes rendering immediately.
+   */
+  function queueRenderPage(num) {
+    if (pageRendering) {
+      pageNumPending = num;
+    } else {
+      renderPage(num);
+    }
+  }
+
+  /**
+   * Displays previous page.
+   */
+  function onPrevPage() {
+    if (pageNum <= 1) {
+      return;
+    }
+    pageNum--;
+    queueRenderPage(pageNum);
+  }
+  document.getElementById("prev").addEventListener("click", onPrevPage);
+
+  /**
+   * Displays next page.
+   */
+  function onNextPage() {
+    if (pageNum >= pdfDoc.numPages) {
+      return;
+    }
+    pageNum++;
+    queueRenderPage(pageNum);
+  }
+  document.getElementById("next").addEventListener("click", onNextPage);
+
+  /**
+   * Asynchronously downloads PDF.
+   */
+  pdfjsLib
+    .getDocument(url)
+    .promise.then(function (pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById("page_count").textContent = pdfDoc.numPages;
+    })
+    .then(function () {
+      fetch("/notes.json")
+        .then((response) => response.json())
+        .then((json) => {
+          notesJson = json;
+          renderPage(pageNum);
         });
-
-        document.getElementById('notes').textContent = notesJson[num - 1]?.notes || "";
-
-        // Update page counters
-        document.getElementById('page_num').textContent = num;
-    }
-
-    /**
-     * If another page rendering in progress, waits until the rendering is
-     * finised. Otherwise, executes rendering immediately.
-     */
-    function queueRenderPage(num) {
-        if (pageRendering) {
-            pageNumPending = num;
-        } else {
-            renderPage(num);
-        }
-    }
-
-    /**
-     * Displays previous page.
-     */
-    function onPrevPage() {
-        if (pageNum <= 1) {
-            return;
-        }
-        pageNum--;
-        queueRenderPage(pageNum);
-    }
-    document.getElementById('prev').addEventListener('click', onPrevPage);
-
-    /**
-     * Displays next page.
-     */
-    function onNextPage() {
-        if (pageNum >= pdfDoc.numPages) {
-            return;
-        }
-        pageNum++;
-        queueRenderPage(pageNum);
-    }
-    document.getElementById('next').addEventListener('click', onNextPage);
-
-    /**
-     * Asynchronously downloads PDF.
-     */
-    pdfjsLib.getDocument(url).promise.then(function (pdfDoc_) {
-        pdfDoc = pdfDoc_;
-        document.getElementById('page_count').textContent = pdfDoc.numPages;
-    }).then(function () {
-        fetch("/notes.json")
-            .then(response => response.json())
-            .then(json => {notesJson = json;
-                renderPage(pageNum);
-            });
     });
 </script>
 
 <div>
-    <button id="prev">Previous</button>
-    <button id="next">Next</button>
-    &nbsp; &nbsp;
-    <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
+  <button id="prev">Previous</button>
+  <button id="next">Next</button>
+  &nbsp; &nbsp;
+  <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
 </div>
 
 <canvas id="the-canvas"></canvas>
 
-<div id="notes" style="white-space: pre-wrap;"></div>
+<div id="notes" style="white-space: pre-wrap"></div>
